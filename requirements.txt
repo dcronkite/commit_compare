@@ -1,2 +1,5 @@
 gitpython
 loguru
+pandas
+matplotlib
+click
