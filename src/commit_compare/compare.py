@@ -18,8 +18,9 @@ from commit_compare.gittools import GitRepo
 
 def save_figure(pdf_writer, field, title=None):
     plt.title(title if title else f'{field}')
-    plt.savefig(f'{field}.svg')
-    pdf_writer.savefig()
+    plt.tight_layout()
+    plt.savefig(f'{field}.svg', bbox_inches='tight')
+    pdf_writer.savefig(bbox_inches='tight')
     plt.close()
 
 
@@ -77,10 +78,10 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
         if id_col not in df.columns:
             logger.warning(f'Commit output lacks id column "{id_col}". Skipping commit {commit.hexsha}')
             continue
-        commits.append(commit.hexsha)
+        commits.append(commit.hexsha[:8])
         for col in (col for col in df.columns if col != id_col):
             col_df = df[[id_col, col]]
-            col_df.columns = [id_col, commit.hexsha]
+            col_df.columns = [id_col, commit.hexsha[:8]]
             if col in data:
                 data[col] = pd.merge(data[col], col_df, on=id_col, how='outer')
             else:
@@ -90,7 +91,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
         list_of_sums = []
         for field, df in data.items():
             cols = [c for c in commits if c in df.columns]
-            plt.figure(figsize=(8, 6))
+            plt.figure()
             if df[df.columns[1]].dtypes != 'O':  # is numeric
                 list_of_sums.append(df[cols].sum())
                 df[cols].plot(kind='box')
@@ -101,13 +102,13 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
                 })
                 ndf.T.plot.bar(stacked=True)
                 save_figure(pdf_writer, field)
-                plt.figure(figsize=(8, 12))
+                plt.figure()
                 ddf = pd.DataFrame({
                     f'{cols[i]}-{cols[i + 1]}': df.groupby(cols[i:i + 2]).count()[id_col]
                     for i in range(len(cols) - 1)
                 })
-                ddf.T.plot.bar(stacked=True, subplots=True)
-                save_figure(pdf_writer, f'{field}_num_changes', title='Number of Changes by Value')
+                ddf.T.plot.bar(stacked=False, subplots=False)
+                save_figure(pdf_writer, f'{field}_num_changes', title=f'Number of Changes by Value: {field}')
 
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
