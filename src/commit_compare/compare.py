@@ -58,8 +58,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
     :param end_commit:
     :return:
     """
-    data = {}  # col -> DataFrame (each row
-    id_col = 'id'
+    data = {}  # col -> DataFrame (each row is a commit)
     repo = GitRepo(repo_url, repo_dest)
     commits = []
     run_command = pre_command + ';' + command if pre_command else command
