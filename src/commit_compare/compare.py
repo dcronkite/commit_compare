@@ -4,6 +4,8 @@ Compare output from multiple runs of git commits
 Feature ideas:
 * synonyms (e.g., the name of data changes over time)
 """
+import os
+
 import click
 import datetime
 import subprocess
@@ -42,10 +44,13 @@ def save_figure(pdf_writer, field, title=None):
               help='Start running with this commit.')
 @click.option('--end-commit', default=None,
               help='Stop running after this commit.')
+@click.option('--relative-pythonpath', default='',
+              help='Cloned root will automatically be added to PYTHONPATH, use this to add, e.g., "src" to the path.')
 def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col='id', start_date=None, end_date=None,
-         start_commit=None, end_commit=None):
+         start_commit=None, end_commit=None, relative_pythonpath=''):
     """
 
+    :param relative_pythonpath:
     :param repo_url: Git repository to clone.
     :param outfile: Output csv file to be compared against previous/subsequent runs.
     :param command: Run command: use {target} to get the repository path and {outfile} for the supplied output file
@@ -61,13 +66,15 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
     data = {}  # col -> DataFrame (each row is a commit)
     repo = GitRepo(repo_url, repo_dest)
     commits = []
+    env = {
+        'PYTHONPATH': os.path.join(repo.repo_path, relative_pythonpath)
+    }
     run_command = pre_command + ';' + command if pre_command else command
     run_command = run_command.format(target=repo.repo_path, outfile=outfile)
     for commit in repo.iter_commits(start_date=start_date, end_date=end_date,
                                     start_commit=start_commit, end_commit=end_commit):
-        logger.info(commit)
-        # run the program
-        p = subprocess.Popen(run_command, shell=True, stderr=subprocess.PIPE)
+        logger.info(f'Starting commit: {commit}')
+        p = subprocess.Popen(run_command, shell=True, stderr=subprocess.PIPE, env=env)
         res = p.communicate()
         if res[1]:  # error occurred
             logger.warning(f'Command failed for commit {commit.hexsha}: \n{res[1]}')
