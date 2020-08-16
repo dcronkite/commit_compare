@@ -83,16 +83,20 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
         list_of_sums = []
         for field, df in data.items():
             cols = [c for c in commits if c in df.columns]
+            plt.figure(figsize=(8, 6))
             if df[df.columns[1]].dtypes != 'O':  # is numeric
                 list_of_sums.append(df[cols].sum())
-                plt.figure(figsize=(8, 6))
                 df[cols].plot(kind='box')
-                plt.title(f'{field}')
-                plt.savefig(f'{field}.svg')
-                pdf_writer.savefig()
-                plt.close()
             else:
-                print('Is none')
+                ndf = pd.DataFrame({
+                    col: df[col].value_counts() for col in cols
+                })
+                ndf.T.plot.bar(stacked=True)
+            plt.title(f'{field}')
+            plt.savefig(f'{field}.svg')
+            pdf_writer.savefig()
+            plt.close()
+
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
         sum_df.plot(kind='line')
