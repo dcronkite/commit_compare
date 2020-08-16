@@ -92,9 +92,10 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                              shell=True, stderr=subprocess.PIPE, env=env)
         res = p.communicate()
         err = res[1].decode('utf8')
-        if 'You are using pip' in err:
+        if 'You are using pip' in err:  # request to upgrade when using pip
             res = (None, b'')
         if 'requirements.txt' in err:
+            logger.info('Requirements.txt file not found.')
             p = subprocess.Popen(f'{pre_command_no_pip};{run_command}',
                                  shell=True, stderr=subprocess.PIPE, env=env)
             res = p.communicate()
