@@ -32,7 +32,7 @@ def save_figure(pdf_writer, field, title=None):
 @click.argument('command', required=True, )
 @click.option('--repo-dest', default=None,
               help='Parent directory for cloning; the new directory will be cloned INSIDE this directory.')
-@click.option('--pre-command', default=None,
+@click.option('--pre-command', default='',
               help='Run before the run command; this might include, e.g., set up a virtual environment.')
 @click.option('--id-col', default='id',
               help='Id column to use as reference to join multiple runs together; expected in all datasets.')
@@ -46,10 +46,13 @@ def save_figure(pdf_writer, field, title=None):
               help='Stop running after this commit.')
 @click.option('--relative-pythonpath', default='',
               help='Cloned root will automatically be added to PYTHONPATH, use this to add, e.g., "src" to the path.')
-def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col='id', start_date=None, end_date=None,
-         start_commit=None, end_commit=None, relative_pythonpath=''):
+@click.option('--venv', default=None,
+              help='Initialize virtual environment with selected python interpreter')
+def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='id', start_date=None, end_date=None,
+         start_commit=None, end_commit=None, relative_pythonpath='', venv=None):
     """
 
+    :param venv:
     :param relative_pythonpath:
     :param repo_url: Git repository to clone.
     :param outfile: Output csv file to be compared against previous/subsequent runs.
@@ -64,19 +67,38 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
     :return:
     """
     data = {}  # col -> DataFrame (each row is a commit)
-    repo = GitRepo(repo_url, repo_dest)
     commits = []
+    repo = GitRepo(repo_url, repo_dest)
+    pre_command = pre_command.format(target=repo.repo_path, outfile=outfile)
+    pre_command_no_pip = ''
+    run_command = command.format(target=repo.repo_path, outfile=outfile)
+    if venv:
+        p = subprocess.Popen(f'{venv} -m venv {repo.repo_path / ".venv"}', shell=True)
+        p.communicate()
+        pip_install = f'pip install -r {repo.repo_path / "requirements.txt"}'
+        if os.name == 'nt':
+            venv_command = repo.repo_path / '.venv' / 'Scripts' / 'activate.bat'
+        else:
+            venv_command = f"source {repo.repo_path / '.venv' / 'bin' / 'activate'}"
+        pre_command_no_pip = f'{pre_command};{venv_command}'.strip(';')
+        pre_command = f'{pre_command};{venv_command};{pip_install}'.strip(';')
     env = {
-        'PYTHONPATH': os.path.join(repo.repo_path, relative_pythonpath)
+        'PYTHONPATH': repo.repo_path / relative_pythonpath
     }
-    run_command = pre_command + ';' + command if pre_command else command
-    run_command = run_command.format(target=repo.repo_path, outfile=outfile)
     for commit in repo.iter_commits(start_date=start_date, end_date=end_date,
                                     start_commit=start_commit, end_commit=end_commit):
         logger.info(f'Starting commit: {commit}')
-        p = subprocess.Popen(run_command, shell=True, stderr=subprocess.PIPE, env=env)
+        p = subprocess.Popen(f'{pre_command};{run_command}',
+                             shell=True, stderr=subprocess.PIPE, env=env)
         res = p.communicate()
-        if res[1]:  # error occurred
+        err = res[1].decode('utf8')
+        if 'You are using pip' in err:
+            res = (None, b'')
+        if 'requirements.txt' in err:
+            p = subprocess.Popen(f'{pre_command_no_pip};{run_command}',
+                                 shell=True, stderr=subprocess.PIPE, env=env)
+            res = p.communicate()
+        if res[1]:
             logger.warning(f'Command failed for commit {commit.hexsha}: \n{res[1]}')
             continue
         # read the output
