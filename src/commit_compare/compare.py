@@ -107,6 +107,14 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command=None, id_col
                     f'{cols[i]}-{cols[i + 1]}': df.groupby(cols[i:i + 2]).count()[id_col]
                     for i in range(len(cols) - 1)
                 })
+                equal_index = []
+                inequal_index = []
+                for v1, v2 in ddf.index:
+                    if v1 == v2:
+                        equal_index.append((v1, v2))
+                    else:
+                        inequal_index.append((v1, v2))
+                ddf = ddf.reindex(equal_index + inequal_index)  # place no changes at the front
                 ddf.T.plot.bar(stacked=False, subplots=False)
                 save_figure(pdf_writer, f'{field}_num_changes', title=f'Number of Changes by Value: {field}')
 
