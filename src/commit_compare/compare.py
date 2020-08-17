@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from loguru import logger
+from pandas.errors import EmptyDataError
 
 from commit_compare.gittools import GitRepo
 
@@ -26,6 +27,30 @@ def save_figure(pdf_writer, field, title=None):
     plt.close()
 
 
+def run_commands(pre_command, pre_command_no_pip, env, *commands):
+    failed = []
+    for cmd in commands:
+        p = subprocess.Popen(f'{pre_command};{cmd}',
+                             shell=True, stderr=subprocess.PIPE, env=env)
+        res = p.communicate()
+        err = res[1].decode('utf8')
+        if 'You are using pip' in err:  # request to upgrade when using pip
+            err = ''
+        if 'requirements.txt' in err:
+            logger.info('Requirements.txt file not found.')
+            p = subprocess.Popen(f'{pre_command_no_pip};{cmd}',
+                                 shell=True, stderr=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 env=env)
+            res = p.communicate()
+            err = res[1].decode('utf8')
+        if 'errno' in err.lower() or 'error:' in err.lower():
+            failed.append(err)
+        else:
+            return None
+    return '; '.join(failed)
+
+
 @click.command()
 @click.argument('repo-url', required=True)
 @click.argument('outfile', required=True, )
@@ -36,6 +61,8 @@ def save_figure(pdf_writer, field, title=None):
               help='Run before the run command; this might include, e.g., set up a virtual environment.')
 @click.option('--id-col', default='id',
               help='Id column to use as reference to join multiple runs together; expected in all datasets.')
+@click.option('--ignore-col', multiple=True,
+              help='Ignore these columns, do no analysis. Do not include `id_col`.')
 @click.option('--start-date', default=None, type=click.DateTime(),
               help='Start date for selecting commits to run.')
 @click.option('--end-date', default=None, type=click.DateTime(),
@@ -48,8 +75,10 @@ def save_figure(pdf_writer, field, title=None):
               help='Cloned root will automatically be added to PYTHONPATH, use this to add, e.g., "src" to the path.')
 @click.option('--venv', default=None,
               help='Initialize virtual environment with selected python interpreter')
+@click.option('--alt-commands', multiple=True,
+              help='Alternate run commands')
 def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='id', start_date=None, end_date=None,
-         start_commit=None, end_commit=None, relative_pythonpath='', venv=None):
+         start_commit=None, end_commit=None, relative_pythonpath='', venv=None, alt_commands=None, ignore_col=None):
     """
 
     :param venv:
@@ -66,12 +95,14 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     :param end_commit:
     :return:
     """
+    ignore_col = ignore_col or []
     data = {}  # col -> DataFrame (each row is a commit)
     commits = []
     repo = GitRepo(repo_url, repo_dest)
     pre_command = pre_command.format(target=repo.repo_path, outfile=outfile)
     pre_command_no_pip = ''
     run_command = command.format(target=repo.repo_path, outfile=outfile)
+    alt_commands = [c.format(target=repo.repo_path, outfile=outfile) for c in alt_commands or []]
     if venv:
         p = subprocess.Popen(f'{venv} -m venv {repo.repo_path / ".venv"}', shell=True)
         p.communicate()
@@ -82,33 +113,30 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
             venv_command = f"source {repo.repo_path / '.venv' / 'bin' / 'activate'}"
         pre_command_no_pip = f'{pre_command};{venv_command}'.strip(';')
         pre_command = f'{pre_command};{venv_command};{pip_install}'.strip(';')
-    env = {
-        'PYTHONPATH': repo.repo_path / relative_pythonpath
+    _env = {
+        'PYTHONPATH': str(repo.repo_path / relative_pythonpath)
     }
+    env = os.environ.copy()
+    env.update(_env)
     for commit in repo.iter_commits(start_date=start_date, end_date=end_date,
                                     start_commit=start_commit, end_commit=end_commit):
         logger.info(f'Starting commit: {commit}')
-        p = subprocess.Popen(f'{pre_command};{run_command}',
-                             shell=True, stderr=subprocess.PIPE, env=env)
-        res = p.communicate()
-        err = res[1].decode('utf8')
-        if 'You are using pip' in err:  # request to upgrade when using pip
-            res = (None, b'')
-        if 'requirements.txt' in err:
-            logger.info('Requirements.txt file not found.')
-            p = subprocess.Popen(f'{pre_command_no_pip};{run_command}',
-                                 shell=True, stderr=subprocess.PIPE, env=env)
-            res = p.communicate()
-        if res[1]:
-            logger.warning(f'Command failed for commit {commit.hexsha}: \n{res[1]}')
+        # TODO: INSERT INTO
+        errors = run_commands(pre_command, pre_command_no_pip, env, run_command, *alt_commands)
+        if errors:
+            logger.warning(f'Command failed for commit {commit.hexsha}: \n{errors}')
             continue
         # read the output
-        df = pd.read_csv(outfile)
+        try:
+            df = pd.read_csv(outfile)
+        except EmptyDataError as e:
+            logger.warning(e)
+            continue
         if id_col not in df.columns:
             logger.warning(f'Commit output lacks id column "{id_col}". Skipping commit {commit.hexsha}')
             continue
         commits.append(commit.hexsha[:8])
-        for col in (col for col in df.columns if col != id_col):
+        for col in (col for col in df.columns if col != id_col and col not in ignore_col):
             col_df = df[[id_col, col]]
             col_df.columns = [id_col, commit.hexsha[:8]]
             if col in data:
@@ -121,7 +149,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
         for field, df in data.items():
             cols = [c for c in commits if c in df.columns]
             plt.figure()
-            if df[df.columns[1]].dtypes != 'O':  # is numeric
+            if df[df.columns[1]].dtypes not in ['O', 'bool']:  # is numeric
                 list_of_sums.append(df[cols].sum())
                 df[cols].plot(kind='box')
                 save_figure(pdf_writer, field)
