@@ -19,12 +19,13 @@ from pandas.errors import EmptyDataError
 from commit_compare.gittools import GitRepo
 
 
-def save_figure(pdf_writer, field, title=None):
+def save_figure(pdf_writer, field, axis, *, title=None):
+    # fig = axis.get_figure()
     plt.title(title if title else f'{field}')
     plt.tight_layout()
     plt.savefig(f'{field}.svg', bbox_inches='tight')
     pdf_writer.savefig(bbox_inches='tight')
-    plt.close()
+    plt.close('all')
 
 
 def run_commands(pre_command, pre_command_no_pip, env, *commands):
@@ -147,19 +148,18 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     with PdfPages('output.pdf') as pdf_writer:
         list_of_sums = []
         for field, df in data.items():
+            logger.info(f'Running: {field}')
             cols = [c for c in commits if c in df.columns]
-            plt.figure()
             if df[df.columns[1]].dtypes not in ['O', 'bool']:  # is numeric
                 list_of_sums.append(df[cols].sum())
-                df[cols].plot(kind='box')
-                save_figure(pdf_writer, field)
+                ax = df[cols].plot(kind='box')
+                save_figure(pdf_writer, field, ax)
             else:  # is enum-like string
                 ndf = pd.DataFrame({
                     col: df[col].value_counts() for col in cols
                 })
                 ndf.T.plot.bar(stacked=True)
-                save_figure(pdf_writer, field)
-                plt.figure()
+                save_figure(pdf_writer, field, ax)
                 ddf = pd.DataFrame({
                     f'{cols[i]}-{cols[i + 1]}': df.groupby(cols[i:i + 2]).count()[id_col]
                     for i in range(len(cols) - 1)
@@ -172,15 +172,15 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                     else:
                         inequal_index.append((v1, v2))
                 ddf = ddf.reindex(equal_index + inequal_index)  # place no changes at the front
-                ddf.T.plot.bar(stacked=False, subplots=False)
-                save_figure(pdf_writer, f'{field}_num_changes', title=f'Number of Changes by Value: {field}')
+                ax = ddf.T.plot.bar(stacked=False, subplots=False)
+                save_figure(pdf_writer, f'{field}_num_changes', ax, title=f'Number of Changes by Value: {field}')
 
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
         sum_df.plot(kind='line')
         plt.savefig(f'sum.svg')
         pdf_writer.savefig()
-        plt.close()
+        plt.close('all')
         d = pdf_writer.infodict()
         d['Title'] = 'Summary Variables Across Git Commits'
         d['Author'] = ''
