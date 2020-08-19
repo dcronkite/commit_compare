@@ -148,19 +148,18 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
 
     with PdfPages('output.pdf') as pdf_writer:
         list_of_sums = []
-        for field, df in data.items():
-            logger.info(f'Running: {field}')
+        n_fields = len(data)
+        for i, (field, df) in enumerate(data.items()):
+            logger.info(f'Running: {field} ({i+1}/{n_fields})')
             cols = [c for c in commits if c in df.columns]
             if df[df.columns[1]].dtypes not in ['O', 'bool']:  # is numeric
                 list_of_sums.append(df[cols].sum())
-                ax = df[cols].plot(kind='box')
-                save_figure(pdf_writer, field, ax)
+                save_figure(pdf_writer, field, df[cols].plot(kind='box'))
             else:  # is enum-like string
                 ndf = pd.DataFrame({
                     col: df[col].value_counts() for col in cols
                 })
-                ndf.T.plot.bar(stacked=True)
-                save_figure(pdf_writer, field, ax)
+                save_figure(pdf_writer, field, ndf.T.plot.bar(stacked=True))
                 ddf = pd.DataFrame({
                     f'{cols[i]}-{cols[i + 1]}': df.groupby(cols[i:i + 2]).count()[id_col]
                     for i in range(len(cols) - 1)
@@ -178,8 +177,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
 
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
-        ax = sum_df.plot(kind='line')
-        save_figure(pdf_writer, f'sum.svg', ax, title='Summary')
+        save_figure(pdf_writer, 'sum', sum_df.plot(kind='line'), title='Summary')
         plt.close('all')
         d = pdf_writer.infodict()
         d['Title'] = 'Summary Variables Across Git Commits'
