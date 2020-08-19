@@ -20,7 +20,8 @@ from commit_compare.gittools import GitRepo
 
 
 def save_figure(pdf_writer, field, axis, *, title=None):
-    # fig = axis.get_figure()
+    fig = axis.get_figure()
+    fig.set_size_inches(10, 7.5)
     plt.title(title if title else f'{field}')
     plt.tight_layout()
     plt.savefig(f'{field}.svg', bbox_inches='tight')
@@ -177,9 +178,8 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
 
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
-        sum_df.plot(kind='line')
-        plt.savefig(f'sum.svg')
-        pdf_writer.savefig()
+        ax = sum_df.plot(kind='line')
+        save_figure(pdf_writer, f'sum.svg', ax, title='Summary')
         plt.close('all')
         d = pdf_writer.infodict()
         d['Title'] = 'Summary Variables Across Git Commits'
