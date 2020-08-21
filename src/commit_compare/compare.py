@@ -123,7 +123,6 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     for commit in repo.iter_commits(start_date=start_date, end_date=end_date,
                                     start_commit=start_commit, end_commit=end_commit):
         logger.info(f'Starting commit: {commit}')
-        # TODO: INSERT INTO
         errors = run_commands(pre_command, pre_command_no_pip, env, run_command, *alt_commands)
         if errors:
             logger.warning(f'Command failed for commit {commit.hexsha}: \n{errors}')
@@ -150,11 +149,12 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
         list_of_sums = []
         n_fields = len(data)
         for i, (field, df) in enumerate(data.items()):
-            logger.info(f'Running: {field} ({i+1}/{n_fields})')
+            logger.info(f'Building chart for: {field} ({i+1}/{n_fields})')
             cols = [c for c in commits if c in df.columns]
             if df[df.columns[1]].dtypes not in ['O', 'bool']:  # is numeric
                 list_of_sums.append(df[cols].sum())
-                save_figure(pdf_writer, field, df[cols].plot(kind='box'))
+                save_figure(pdf_writer, f'{field}_box', df[cols].plot(kind='box'), title=f'Boxplot for {field}')
+                save_figure(pdf_writer, f'{field}_line', df[cols].sum().plot(kind='line'), title=f'Line for {field}')
             else:  # is enum-like string
                 ndf = pd.DataFrame({
                     col: df[col].value_counts() for col in cols
@@ -172,8 +172,8 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                     else:
                         inequal_index.append((v1, v2))
                 ddf = ddf.reindex(equal_index + inequal_index)  # place no changes at the front
-                ax = ddf.T.plot.bar(stacked=False, subplots=False)
-                save_figure(pdf_writer, f'{field}_num_changes', ax, title=f'Number of Changes by Value: {field}')
+                save_figure(pdf_writer, f'{field}_num_changes', ddf.T.plot.bar(stacked=False, subplots=False),
+                            title=f'Number of Changes by Value: {field}')
 
         sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
         sum_df.fillna(0, inplace=True)
