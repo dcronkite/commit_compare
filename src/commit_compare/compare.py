@@ -77,10 +77,13 @@ def run_commands(pre_command, pre_command_no_pip, env, *commands):
               help='Cloned root will automatically be added to PYTHONPATH, use this to add, e.g., "src" to the path.')
 @click.option('--venv', default=None,
               help='Initialize virtual environment with selected python interpreter')
+@click.option('--branch', default='master',
+              help='Branch to use.')
 @click.option('--alt-commands', multiple=True,
               help='Alternate run commands')
 def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='id', start_date=None, end_date=None,
-         start_commit=None, end_commit=None, relative_pythonpath='', venv=None, alt_commands=None, ignore_col=None):
+         start_commit=None, end_commit=None, relative_pythonpath='', venv=None, branch='master',
+         alt_commands=None, ignore_col=None):
     """
 
     :param venv:
@@ -100,7 +103,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     ignore_col = ignore_col or []
     data = {}  # col -> DataFrame (each row is a commit)
     commits = []
-    repo = GitRepo(repo_url, repo_dest)
+    repo = GitRepo(repo_url, repo_dest, branch=branch)
     pre_command = pre_command.format(target=repo.repo_path, outfile=outfile)
     pre_command_no_pip = ''
     run_command = command.format(target=repo.repo_path, outfile=outfile)
@@ -149,12 +152,18 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
         list_of_sums = []
         n_fields = len(data)
         for i, (field, df) in enumerate(data.items()):
-            logger.info(f'Building chart for: {field} ({i+1}/{n_fields})')
+            logger.info(f'Building chart for: {field} ({i + 1}/{n_fields})')
             cols = [c for c in commits if c in df.columns]
-            if df[df.columns[1]].dtypes not in ['O', 'bool']:  # is numeric
+            # TODO: find the first non-empty row and check dtype
+            if df[df.columns[1]].dtypes not in ['O', 'bool'] and df[df.columns[-1]].dtypes not in ['O', 'bool']:
+                # is numeric
                 list_of_sums.append(df[cols].sum())
                 save_figure(pdf_writer, f'{field}_box', df[cols].plot(kind='box'), title=f'Boxplot for {field}')
-                save_figure(pdf_writer, f'{field}_line', df[cols].sum().plot(kind='line'), title=f'Line for {field}')
+                try:
+                    save_figure(pdf_writer, f'{field}_line', df[cols].sum().plot(kind='line'), title=f'Line for {field}')
+                except Exception as e:
+                    logger.exception(e)
+                    logger.warning(f'Skipping field due to error {e}')
             else:  # is enum-like string
                 ndf = pd.DataFrame({
                     col: df[col].value_counts() for col in cols

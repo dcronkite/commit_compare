@@ -18,8 +18,10 @@ class GitRepo:
             self.repo_path = Path(repo_file) / f'{Path(self.git_url).name}_{i}'
             try:
                 self.repo = Repo.clone_from(self.git_url, self.repo_path, branch=branch)
-            except GitCommandError:
-                logger.warning(f'Clone destination directory already exists {self.repo_path}, will try a different name.')
+            except GitCommandError as e:
+                logger.error(str(e))
+                logger.warning(
+                    f'Maybe clone destination directory already exists {self.repo_path}, will try a different name.')
                 continue
             logger.info(f'Cloning to {self.repo_path}')
             break
