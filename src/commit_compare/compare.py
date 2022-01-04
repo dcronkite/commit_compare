@@ -81,9 +81,11 @@ def run_commands(pre_command, pre_command_no_pip, env, *commands):
               help='Branch to use.')
 @click.option('--alt-commands', multiple=True,
               help='Alternate run commands')
+@click.option('--select-commits', multiple=True,
+              help='Only process selected commits.')
 def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='id', start_date=None, end_date=None,
          start_commit=None, end_commit=None, relative_pythonpath='', venv=None, branch='master',
-         alt_commands=None, ignore_col=None):
+         alt_commands=None, ignore_col=None, select_commits=None):
     """
 
     :param venv:
@@ -124,7 +126,8 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     env = os.environ.copy()
     env.update(_env)
     for commit in repo.iter_commits(start_date=start_date, end_date=end_date,
-                                    start_commit=start_commit, end_commit=end_commit):
+                                    start_commit=start_commit, end_commit=end_commit,
+                                    select_commits=select_commits):
         logger.info(f'Starting commit: {commit}')
         errors = run_commands(pre_command, pre_command_no_pip, env, run_command, *alt_commands)
         if errors:
@@ -184,14 +187,17 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                 save_figure(pdf_writer, f'{field}_num_changes', ddf.T.plot.bar(stacked=False, subplots=False),
                             title=f'Number of Changes by Value: {field}')
 
-        sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
-        sum_df.fillna(0, inplace=True)
-        save_figure(pdf_writer, 'sum', sum_df.plot(kind='line'), title='Summary')
-        plt.close('all')
-        d = pdf_writer.infodict()
-        d['Title'] = 'Summary Variables Across Git Commits'
-        d['Author'] = ''
-        d['CreationDate'] = datetime.datetime.today()
+        if not list_of_sums:
+            logger.warning('No data collected during this process.')
+        else:
+            sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
+            sum_df.fillna(0, inplace=True)
+            save_figure(pdf_writer, 'sum', sum_df.plot(kind='line'), title='Summary')
+            plt.close('all')
+            d = pdf_writer.infodict()
+            d['Title'] = 'Summary Variables Across Git Commits'
+            d['Author'] = ''
+            d['CreationDate'] = datetime.datetime.today()
 
 
 if __name__ == '__main__':

@@ -26,7 +26,8 @@ class GitRepo:
             logger.info(f'Cloning to {self.repo_path}')
             break
 
-    def iter_commits(self, *, start_date=None, end_date=None, start_commit=None, end_commit=None):
+    def iter_commits(self, *, start_date=None, end_date=None, start_commit=None, end_commit=None,
+                     select_commits=None):
         found_start_commit = False
         for commit in sorted(self.repo.iter_commits(), key=lambda c: c.committed_datetime):
             if start_date and commit.committed_datetime < start_date.replace(tzinfo=commit.committed_datetime.tzinfo):
@@ -40,8 +41,16 @@ class GitRepo:
                     continue
             elif end_commit and found_start_commit and commit.hexsha.startswith(end_commit):
                 break
+            elif select_commits:
+                if not self._commit_hexsha_in(commit, select_commits):
+                    continue
             self.repo.git.checkout(commit)
             yield commit
+
+    def _commit_hexsha_in(self, commit, select_commits):
+        for c in select_commits:
+            if commit.hexsha.startswith(c):
+                return True
 
     def __del__(self):
         if self._cleanup:
