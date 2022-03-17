@@ -5,6 +5,7 @@ Feature ideas:
 * synonyms (e.g., the name of data changes over time)
 """
 import os
+import pathlib
 
 import click
 import datetime
@@ -19,12 +20,12 @@ from pandas.errors import EmptyDataError
 from commit_compare.gittools import GitRepo
 
 
-def save_figure(pdf_writer, field, axis, *, title=None):
+def save_figure(pdf_writer, field, axis, output_directory, *, title=None):
     fig = axis.get_figure()
     fig.set_size_inches(10, 7.5)
     plt.title(title if title else f'{field}')
     plt.tight_layout()
-    plt.savefig(f'{field}.svg', bbox_inches='tight')
+    plt.savefig(output_directory / f'{field}.svg', bbox_inches='tight')
     pdf_writer.savefig(bbox_inches='tight')
     plt.close('all')
 
@@ -83,11 +84,15 @@ def run_commands(pre_command, pre_command_no_pip, env, *commands):
               help='Alternate run commands')
 @click.option('--select-commits', multiple=True,
               help='Only process selected commits.')
+@click.option('--output-directory', default=pathlib.Path('.'),
+              type=click.Path(file_okay=False, path_type=pathlib.Path),
+              help='Directory to output data (images/pdf)')
 def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='id', start_date=None, end_date=None,
          start_commit=None, end_commit=None, relative_pythonpath='', venv=None, branch='master',
-         alt_commands=None, ignore_col=None, select_commits=None):
+         alt_commands=None, ignore_col=None, select_commits=None, output_directory=pathlib.Path('.')):
     """
 
+    :param output_directory: Directory to output data (images/pdf)
     :param branch: git branch to checkout; all versions must be in same branch
     :param alt_commands: alternative commands to try (e.g., if an older version used a different api)
     :param ignore_col: ignore specified columns
@@ -107,6 +112,8 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
     :return:
     """
     ignore_col = ignore_col or []
+    output_directory.mkdir(exist_ok=True)
+    logger.add(output_directory / 'commit_compare_{time}.log')
     data = {}  # col -> DataFrame (each row is a commit)
     commits = []
     repo = GitRepo(repo_url, repo_dest, branch=branch)
@@ -155,7 +162,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
             else:
                 data[col] = col_df
 
-    with PdfPages('output.pdf') as pdf_writer:
+    with PdfPages(output_directory / 'output.pdf') as pdf_writer:
         list_of_sums = []
         n_fields = len(data)
         for i, (field, df) in enumerate(data.items()):
@@ -165,9 +172,11 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
             if df[df.columns[1]].dtypes not in ['O', 'bool'] and df[df.columns[-1]].dtypes not in ['O', 'bool']:
                 # is numeric
                 list_of_sums.append(df[cols].sum())
-                save_figure(pdf_writer, f'{field}_box', df[cols].plot(kind='box'), title=f'Boxplot for {field}')
+                save_figure(pdf_writer, f'{field}_box', df[cols].plot(kind='box'), output_directory=output_directory,
+                            title=f'Boxplot for {field}')
                 try:
-                    save_figure(pdf_writer, f'{field}_line', df[cols].sum().plot(kind='line'), title=f'Line for {field}')
+                    save_figure(pdf_writer, f'{field}_line', df[cols].sum().plot(kind='line'),
+                                output_directory=output_directory, title=f'Line for {field}')
                 except Exception as e:
                     logger.exception(e)
                     logger.warning(f'Skipping field due to error {e}')
@@ -175,7 +184,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                 ndf = pd.DataFrame({
                     col: df[col].value_counts() for col in cols
                 })
-                save_figure(pdf_writer, field, ndf.T.plot.bar(stacked=True))
+                save_figure(pdf_writer, field, ndf.T.plot.bar(stacked=True), output_directory=output_directory)
                 ddf = pd.DataFrame({
                     f'{cols[i]}-{cols[i + 1]}': df.groupby(cols[i:i + 2]).count()[id_col]
                     for i in range(len(cols) - 1)
@@ -189,6 +198,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
                         inequal_index.append((v1, v2))
                 ddf = ddf.reindex(equal_index + inequal_index)  # place no changes at the front
                 save_figure(pdf_writer, f'{field}_num_changes', ddf.T.plot.bar(stacked=False, subplots=False),
+                            output_directory=output_directory,
                             title=f'Number of Changes by Value: {field}')
 
         if not list_of_sums:
@@ -196,7 +206,7 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
         else:
             sum_df = pd.concat(list_of_sums, axis=1, keys=data.keys())
             sum_df.fillna(0, inplace=True)
-            save_figure(pdf_writer, 'sum', sum_df.plot(kind='line'), title='Summary')
+            save_figure(pdf_writer, 'sum', sum_df.plot(kind='line'), output_directory=output_directory, title='Summary')
             plt.close('all')
             d = pdf_writer.infodict()
             d['Title'] = 'Summary Variables Across Git Commits'
