@@ -88,18 +88,22 @@ def main(repo_url, outfile, command, *, repo_dest=None, pre_command='', id_col='
          alt_commands=None, ignore_col=None, select_commits=None):
     """
 
-    :param venv:
+    :param branch: git branch to checkout; all versions must be in same branch
+    :param alt_commands: alternative commands to try (e.g., if an older version used a different api)
+    :param ignore_col: ignore specified columns
+    :param select_commits: only run these particular commits
+    :param venv: Initialize virtual environment with selected python interpreter
     :param relative_pythonpath:
     :param repo_url: Git repository to clone.
     :param outfile: Output csv file to be compared against previous/subsequent runs.
     :param command: Run command: use {target} to get the repository path and {outfile} for the supplied output file
-    :param repo_dest:
-    :param pre_command:
-    :param id_col:
-    :param start_date:
-    :param end_date:
-    :param start_commit:
-    :param end_commit:
+    :param repo_dest: Parent directory for cloning; the new directory will be cloned INSIDE this directory.
+    :param pre_command: Run before the run command; this might include, e.g., set up a virtual environment.
+    :param id_col: Column to use for joining data, etc.
+    :param start_date: earliest date to start running/comparing commits
+    :param end_date: latest date before stopping running/comparing commits
+    :param start_commit: start with this commit and run all commits after
+    :param end_commit: end with this commit (assumes that running commits before)
     :return:
     """
     ignore_col = ignore_col or []
