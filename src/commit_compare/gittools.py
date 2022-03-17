@@ -1,3 +1,4 @@
+import datetime
 import shutil
 import tempfile
 from pathlib import Path
@@ -14,17 +15,10 @@ class GitRepo:
         if not repo_file:
             self._cleanup = tempfile.TemporaryDirectory()
             repo_file = self._cleanup.name
-        for i in range(100):
-            self.repo_path = Path(repo_file) / f'{Path(self.git_url).name}_{i}'
-            try:
-                self.repo = Repo.clone_from(self.git_url, self.repo_path, branch=branch)
-            except GitCommandError as e:
-                logger.error(str(e))
-                logger.warning(
-                    f'Maybe clone destination directory already exists {self.repo_path}, will try a different name.')
-                continue
-            logger.info(f'Cloning to {self.repo_path}')
-            break
+        dt = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.repo_path = Path(repo_file) / f'{Path(self.git_url).name}_{dt}'
+        self.repo = Repo.clone_from(self.git_url, self.repo_path, branch=branch)
+        logger.info(f'Cloning to {self.repo_path}')
 
     def iter_commits(self, *, start_date=None, end_date=None, start_commit=None, end_commit=None,
                      select_commits=None):
